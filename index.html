@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gestionale Magazzini Scout</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      color: #fff;
+      background: linear-gradient(135deg, #6b3e26, #d4a017, #a01b1b);
+      background-attachment: fixed;
+    }
+
+    header {
+      position: relative;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background: rgba(0, 0, 0, 0.6);
+      color: white;
+      padding: 10px 20px;
+      border-bottom: 2px solid #ffcc00;
+    }
+
+    header img {
+      position: absolute;
+      top: 10px;
+      right: 15px;
+      height: 50px;
+      filter: drop-shadow(2px 2px 4px rgba(0,0,0,0.7));
+      z-index: 10;
+    }
+
+    main { padding: 15px; }
+
+    .footer {
+      position: fixed;
+      bottom: 5px;
+      left: 10px;
+      font-size: 12px;
+      color: white;
+      opacity: 0.8;
+    }
+
+    button {
+      background: #ffcc00;
+      border: none;
+      color: #000;
+      padding: 10px 15px;
+      margin: 5px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: bold;
+      transition: background 0.3s;
+      min-width: 80px;
+    }
+
+    button:hover { background: #ffd633; }
+
+    .container {
+      background: rgba(0,0,0,0.6);
+      border-radius: 12px;
+      padding: 15px;
+      max-width: 700px;
+      margin: auto;
+      text-align: center;
+      box-sizing: border-box;
+    }
+
+    input {
+      width: 90%;
+      padding: 10px;
+      margin: 5px 0;
+      border-radius: 8px;
+      border: none;
+      font-size: 16px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 15px;
+      background-color: rgba(255,255,255,0.9);
+      color: #000;
+      border-radius: 8px;
+      overflow: hidden;
+      display: block;
+      overflow-x: auto;
+    }
+
+    th, td {
+      border-bottom: 1px solid #ccc;
+      padding: 8px;
+      text-align: center;
+      white-space: nowrap;
+    }
+
+    th { background-color: #d4a017; color: #000; }
+    tr:hover { background-color: rgba(255, 204, 0, 0.3); }
+
+    td.noteCell { cursor: pointer; background: rgba(255,255,255,0.2); }
+    td.noteCell:focus { outline: 2px solid #ffcc00; background: rgba(255,255,255,0.4); }
+
+    .hidden { display: none; }
+
+    /* Responsive per smartphone */
+    @media only screen and (max-width: 480px) {
+      button { padding: 12px 18px; font-size: 14px; }
+      input { font-size: 14px; padding: 8px; }
+      table th, table td { font-size: 12px; padding: 6px; }
+      header h1 { font-size: 18px; }
+      .container { padding: 10px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Gestionale Magazzini Scout</h1>
+    <img src="giglio.png" alt="Giglio Scout">
+  </header>
+
+  <main>
+    <!-- LOGIN -->
+    <div id="loginSection" class="container">
+      <h2>Login</h2>
+      <input type="email" id="email" placeholder="Email"><br>
+      <input type="password" id="password" placeholder="Password"><br>
+      <button id="loginBtn">Accedi</button>
+      <p id="msg"></p>
+    </div>
+
+    <!-- MAGAZZINI -->
+    <div id="magazziniSection" class="container hidden">
+      <h2>Magazzini</h2>
+      <div id="listaMagazzini"></div>
+      <button id="logoutBtn">Logout</button>
+    </div>
+
+    <!-- COMPONENTI MAGAZZINO -->
+    <div id="componentiSection" class="container hidden">
+      <h2 id="titoloMagazzino"></h2>
+      <div style="overflow-x:auto;">
+        <table id="tabellaComponenti">
+          <thead>
+            <tr>
+              <th>Componente</th>
+              <th>Quantità</th>
+              <th>Note</th>
+              <th>Azioni</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <h3>Aggiungi componente</h3>
+      <input type="text" id="nomeComponente" placeholder="Nome componente"><br>
+      <input type="number" id="quantitaComponente" placeholder="Quantità"><br>
+      <input type="text" id="noteComponente" placeholder="Note"><br>
+      <button id="btnAggiungi">Aggiungi</button>
+
+      <br><br>
+      <button id="btnEsporta">Esporta in Excel</button>
+      <button id="btnTorna">Torna ai Magazzini</button>
+    </div>
+  </main>
+
+  <div class="footer">© Copyright Ing. Antonio Amato</div>
+
+  <!-- Supabase -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.6/dist/umd/supabase.min.js"></script>
+  <!-- SheetJS per Excel -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+
+  <script>
+    const supabaseUrl = "https://vnciisnydgdmumjiufoi.supabase.co";
+    const supabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZuY2lpc255ZGdkbXVtaml1Zm9pIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI0MjIwMjUsImV4cCI6MjA3Nzk5ODAyNX0.xDPkdiluTl5jDJ9xHtWFNoCutmlp0IDzEtrD5tOkBpE";
+    const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+
+    const loginSection = document.getElementById("loginSection");
+    const magazziniSection = document.getElementById("magazziniSection");
+    const componentiSection = document.getElementById("componentiSection");
+    const listaMagazzini = document.getElementById("listaMagazzini");
+    const titoloMagazzino = document.getElementById("titoloMagazzino");
+    const tabellaComponenti = document.querySelector("#tabellaComponenti tbody");
+
+    let magazzinoCorrente = null;
+
+    async function login() {
+      const email = document.getElementById("email").value;
+      const password = document.getElementById("password").value;
+      const msg = document.getElementById("msg");
+
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) {
+        msg.innerText = "Errore login: " + error.message;
+        msg.style.color = "red";
+      } else {
+        msg.innerText = "Login effettuato!";
+        msg.style.color = "lightgreen";
+        mostraMagazzini();
+      }
+    }
+
+    async function logout() {
+      await supabase.auth.signOut();
+      magazziniSection.classList.add("hidden");
+      loginSection.classList.remove("hidden");
+    }
+
+    async function mostraMagazzini() {
+      loginSection.classList.add("hidden");
+      magazziniSection.classList.remove("hidden");
+
+      const { data, error } = await supabase.from("magazzini").select("*");
+      if (error) return alert("Errore caricamento magazzini");
+
+      listaMagazzini.innerHTML = "";
+      data.forEach(m => {
+        const btn = document.createElement("button");
+        btn.textContent = m.nome;
+        btn.onclick = () => apriMagazzino(m);
+        listaMagazzini.appendChild(btn);
+      });
+    }
+
+    async function apriMagazzino(magazzino) {
+      magazzinoCorrente = magazzino;
+      magazziniSection.classList.add("hidden");
+      componentiSection.classList.remove("hidden");
+      titoloMagazzino.textContent = "Magazzino: " + magazzino.nome;
+      caricaComponenti();
+    }
+
+    async function caricaComponenti() {
+      const { data, error } = await supabase.from("componenti").select("*").eq("magazzino_id", magazzinoCorrente.id);
+      if (error) return alert("Errore caricamento componenti");
+
+      tabellaComponenti.innerHTML = "";
+      if (data.length === 0) {
+        tabellaComponenti.innerHTML = "<tr><td colspan='4'>Nessun componente presente.</td></tr>";
+      } else {
+        data.forEach(c => {
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+            <td>${c.nome}</td>
+            <td>${c.quantita}</td>
+            <td class="noteCell" contenteditable="true" onblur="aggiornaNote(${c.id}, this.innerText)">${c.note || ''}</td>
+            <td>
+              <button onclick="rimuoviQuantita(${c.id})">-</button>
+              <button onclick="eliminaComponente(${c.id})">Elimina</button>
+            </td>`;
+          tabellaComponenti.appendChild(tr);
+        });
+      }
+    }
+
+    async function aggiornaNote(id, note) {
+      await supabase.from("componenti").update({ note }).eq("id", id);
+    }
+
+    async function aggiungiComponente() {
+      const nome = document.getElementById("nomeComponente").value.trim();
+      const quantita = parseInt(document.getElementById("quantitaComponente").value);
+      const note = document.getElementById("noteComponente").value.trim();
+      if (!nome || quantita <= 0) return alert("Dati non validi");
+
+      try {
+        const { data: esistente } = await supabase
+          .from("componenti")
+          .select("*")
+          .eq("magazzino_id", magazzinoCorrente.id)
+          .eq("nome", nome)
+          .maybeSingle();
+
+        if (esistente) {
+          await supabase
+            .from("componenti")
+            .update({ quantita: esistente.quantita + quantita, note })
+            .eq("id", esistente.id);
+        } else {
+          await supabase
+            .from("componenti")
+            .insert([{ nome, quantita, note, magazzino_id: magazzinoCorrente.id }]);
+        }
+
+        document.getElementById("nomeComponente").value = "";
+        document.getElementById("quantitaComponente").value = "";
+        document.getElementById("noteComponente").value = "";
+        caricaComponenti();
+
+      } catch (err) {
+        alert("Errore aggiunta componente: " + err.message);
+      }
+    }
+
+    async function rimuoviQuantita(id) {
+      const quantitaDaTogliere = parseInt(prompt("Quanta quantità vuoi rimuovere?"));
+      if (isNaN(quantitaDaTogliere) || quantitaDaTogliere <= 0) return alert("Quantità non valida.");
+
+      const { data: comp } = await supabase.from("componenti").select("*").eq("id", id).single();
+      if (comp.quantita <= quantitaDaTogliere) {
+        await eliminaComponente(id);
+      } else {
+        await supabase.from("componenti").update({ quantita: comp.quantita - quantitaDaTogliere }).eq("id", id);
+        caricaComponenti();
+      }
+    }
+
+    async function eliminaComponente(id) {
+      if (confirm("Sei sicuro di voler eliminare questo componente?")) {
+        await supabase.from("componenti").delete().eq("id", id);
+        caricaComponenti();
+      }
+    }
+
+    function tornaIndietro() {
+      componentiSection.classList.add("hidden");
+      magazziniSection.classList.remove("hidden");
+    }
+
+    function esportaExcel() {
+      const wb = XLSX.utils.book_new();
+      const table = document.getElementById("tabellaComponenti");
+
+      const ws_data = [];
+      const rows = table.querySelectorAll("tr");
+      rows.forEach(row => {
+        const cols = row.querySelectorAll("th, td");
+        const rowData = [];
+        for (let i = 0; i < cols.length - 1; i++) { // esclude ultima colonna "Azioni"
+          rowData.push(cols[i].innerText);
+        }
+        ws_data.push(rowData);
+      });
+
+      const ws = XLSX.utils.aoa_to_sheet(ws_data);
+      XLSX.utils.book_append_sheet(wb, ws, magazzinoCorrente.nome);
+      XLSX.writeFile(wb, `${magazzinoCorrente.nome}.xlsx`);
+    }
+
+    // Pulsanti
+    document.getElementById("loginBtn").onclick = login;
+    document.getElementById("logoutBtn").onclick = logout;
+    document.getElementById("btnAggiungi").onclick = aggiungiComponente;
+    document.getElementById("btnTorna").onclick = tornaIndietro;
+    document.getElementById("btnEsporta").onclick = esportaExcel;
+  </script>
+</body>
+</html>
