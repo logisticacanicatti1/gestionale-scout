@@ -249,7 +249,7 @@
             <td>${c.quantita}</td>
             <td class="noteCell" contenteditable="true" onblur="aggiornaNote(${c.id}, this.innerText)">${c.note || ''}</td>
             <td>
-              <button onclick="rimuoviQuantita(${c.id})">-</button>
+              <button onclick="rimuoviQuantita(${c.id})">Decrementa</button>
               <button onclick="eliminaComponente(${c.id})">Elimina</button>
             </td>`;
           tabellaComponenti.appendChild(tr);
@@ -350,4 +350,5 @@
   </script>
 </body>
 </html>
+
 
