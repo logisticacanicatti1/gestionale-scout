@@ -1,10 +1,9 @@
-
 <!DOCTYPE html>
 <html lang="it">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Gestionale Magazzini Gruppo Scout Canicattì 1</title>
+  <title>Gestionale Magazzini Gruppo Scout Canicattì 1 </title>
   <style>
     body {
       margin: 0;
@@ -106,6 +105,7 @@
 
     .hidden { display: none; }
 
+    /* Responsive per smartphone */
     @media only screen and (max-width: 480px) {
       button { padding: 12px 18px; font-size: 14px; }
       input { font-size: 14px; padding: 8px; }
@@ -122,6 +122,7 @@
   </header>
 
   <main>
+    <!-- LOGIN -->
     <div id="loginSection" class="container">
       <h2>Login</h2>
       <input type="email" id="email" placeholder="Email"><br>
@@ -130,12 +131,14 @@
       <p id="msg"></p>
     </div>
 
+    <!-- MAGAZZINI -->
     <div id="magazziniSection" class="container hidden">
       <h2>Magazzini</h2>
       <div id="listaMagazzini"></div>
       <button id="logoutBtn">Logout</button>
     </div>
 
+    <!-- COMPONENTI MAGAZZINO -->
     <div id="componentiSection" class="container hidden">
       <h2 id="titoloMagazzino"></h2>
       <div style="overflow-x:auto;">
@@ -166,7 +169,9 @@
 
   <div class="footer">© Copyright Ing. Antonio Amato</div>
 
+  <!-- Supabase -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.6/dist/umd/supabase.min.js"></script>
+  <!-- SheetJS per Excel -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 
   <script>
@@ -230,19 +235,13 @@
     }
 
     async function caricaComponenti() {
-      const { data, error } = await supabase
-        .from("componenti")
-        .select("*")
-        .eq("magazzino_id", magazzinoCorrente.id)
-        .order("nome", { ascending: true });
-
+      const { data, error } = await supabase.from("componenti").select("*").eq("magazzino_id", magazzinoCorrente.id);
       if (error) return alert("Errore caricamento componenti");
 
       tabellaComponenti.innerHTML = "";
-      if (!data || data.length === 0) {
+      if (data.length === 0) {
         tabellaComponenti.innerHTML = "<tr><td colspan='4'>Nessun componente presente.</td></tr>";
       } else {
-        data.sort((a, b) => a.nome.localeCompare(b.nome, 'it', { sensitivity: 'base' }));
         data.forEach(c => {
           const tr = document.createElement("tr");
           tr.innerHTML = `
@@ -268,29 +267,29 @@
       const note = document.getElementById("noteComponente").value.trim();
       if (!nome || quantita <= 0) return alert("Dati non validi");
 
-      const nomeMinuscolo = nome.toLowerCase();
-
       try {
-        const { data: esistenti } = await supabase
+        const { data: esistente } = await supabase
           .from("componenti")
           .select("*")
-          .eq("magazzino_id", magazzinoCorrente.id);
+          .eq("magazzino_id", magazzinoCorrente.id)
+          .eq("nome", nome)
+          .maybeSingle();
 
-        const duplicato = esistenti.find(c => c.nome.toLowerCase() === nomeMinuscolo);
-
-        if (duplicato) {
-          alert("⚠️ L'elemento \"" + duplicato.nome + "\" esiste già in questo magazzino.");
-          return;
+        if (esistente) {
+          await supabase
+            .from("componenti")
+            .update({ quantita: esistente.quantita + quantita, note })
+            .eq("id", esistente.id);
+        } else {
+          await supabase
+            .from("componenti")
+            .insert([{ nome, quantita, note, magazzino_id: magazzinoCorrente.id }]);
         }
-
-        await supabase
-          .from("componenti")
-          .insert([{ nome, quantita, note, magazzino_id: magazzinoCorrente.id }]);
 
         document.getElementById("nomeComponente").value = "";
         document.getElementById("quantitaComponente").value = "";
         document.getElementById("noteComponente").value = "";
-        await caricaComponenti();
+        caricaComponenti();
 
       } catch (err) {
         alert("Errore aggiunta componente: " + err.message);
@@ -306,14 +305,14 @@
         await eliminaComponente(id);
       } else {
         await supabase.from("componenti").update({ quantita: comp.quantita - quantitaDaTogliere }).eq("id", id);
-        await caricaComponenti();
+        caricaComponenti();
       }
     }
 
     async function eliminaComponente(id) {
       if (confirm("Sei sicuro di voler eliminare questo componente?")) {
         await supabase.from("componenti").delete().eq("id", id);
-        await caricaComponenti();
+        caricaComponenti();
       }
     }
 
@@ -331,7 +330,7 @@
       rows.forEach(row => {
         const cols = row.querySelectorAll("th, td");
         const rowData = [];
-        for (let i = 0; i < cols.length - 1; i++) {
+        for (let i = 0; i < cols.length - 1; i++) { // esclude ultima colonna "Azioni"
           rowData.push(cols[i].innerText);
         }
         ws_data.push(rowData);
@@ -342,6 +341,7 @@
       XLSX.writeFile(wb, `${magazzinoCorrente.nome}.xlsx`);
     }
 
+    // Pulsanti
     document.getElementById("loginBtn").onclick = login;
     document.getElementById("logoutBtn").onclick = logout;
     document.getElementById("btnAggiungi").onclick = aggiungiComponente;
