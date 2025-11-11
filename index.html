@@ -133,6 +133,7 @@
       <h2>Magazzini</h2>
       <div id="listaMagazzini"></div>
       <button id="logoutBtn">Logout</button>
+      <button id="btnEsportaLog" class="hidden">Esporta Log Utenti</button>
     </div>
 
     <div id="componentiSection" class="container hidden">
@@ -179,8 +180,15 @@
     const listaMagazzini = document.getElementById("listaMagazzini");
     const titoloMagazzino = document.getElementById("titoloMagazzino");
     const tabellaComponenti = document.querySelector("#tabellaComponenti tbody");
+    const btnEsportaLog = document.getElementById("btnEsportaLog");
 
     let magazzinoCorrente = null;
+
+    async function registraLog(azione, dettagli = '') {
+      const { data: userData } = await supabase.auth.getUser();
+      const email = userData?.user?.email || 'anonimo';
+      await supabase.from("log").insert([{ email, azione, dettagli, data: new Date().toISOString() }]);
+    }
 
     async function login() {
       const email = document.getElementById("email").value;
@@ -194,14 +202,21 @@
       } else {
         msg.innerText = "Login effettuato!";
         msg.style.color = "lightgreen";
+        await registraLog("Login");
         mostraMagazzini();
+
+        if (email.toLowerCase() === "admin@scout.it") {
+          btnEsportaLog.classList.remove("hidden");
+        }
       }
     }
 
     async function logout() {
+      await registraLog("Logout");
       await supabase.auth.signOut();
       magazziniSection.classList.add("hidden");
       loginSection.classList.remove("hidden");
+      btnEsportaLog.classList.add("hidden");
     }
 
     async function mostraMagazzini() {
@@ -260,6 +275,7 @@
 
     async function aggiornaNote(id, note) {
       await supabase.from("componenti").update({ note }).eq("id", id);
+      await registraLog("Aggiornamento note componente", note);
     }
 
     async function aggiungiComponente() {
@@ -288,6 +304,8 @@
           .from("componenti")
           .insert([{ nome, quantita, note, magazzino_id: magazzinoCorrente.id }]);
 
+        await registraLog("Aggiunta componente", `${nome} - ${quantita}`);
+
         document.getElementById("nomeComponente").value = "";
         document.getElementById("quantitaComponente").value = "";
         document.getElementById("noteComponente").value = "";
@@ -309,6 +327,8 @@
         .update({ quantita: comp.quantita + quantitaDaAggiungere })
         .eq("id", id);
 
+      await registraLog("Incremento componente", `${comp.nome} +${quantitaDaAggiungere}`);
+
       await caricaComponenti();
     }
 
@@ -321,13 +341,16 @@
         await eliminaComponente(id);
       } else {
         await supabase.from("componenti").update({ quantita: comp.quantita - quantitaDaTogliere }).eq("id", id);
+        await registraLog("Decremento componente", `${comp.nome} -${quantitaDaTogliere}`);
         await caricaComponenti();
       }
     }
 
     async function eliminaComponente(id) {
+      const { data: comp } = await supabase.from("componenti").select("*").eq("id", id).single();
       if (confirm("Sei sicuro di voler eliminare questo componente?")) {
         await supabase.from("componenti").delete().eq("id", id);
+        await registraLog("Eliminazione componente", comp.nome);
         await caricaComponenti();
       }
     }
@@ -355,11 +378,24 @@
       XLSX.writeFile(wb, `${magazzinoCorrente.nome}.xlsx`);
     }
 
+    async function esportaLog() {
+      const { data, error } = await supabase.from("log").select("*").order("data", { ascending: true });
+      if (error) return alert("Errore esportazione log: " + error.message);
+
+      const wb = XLSX.utils.book_new();
+      const ws_data = [["Email", "Azione", "Dettagli", "Data"]];
+      data.forEach(r => ws_data.push([r.email, r.azione, r.dettagli || '', r.data]));
+      const ws = XLSX.utils.aoa_to_sheet(ws_data);
+      XLSX.utils.book_append_sheet(wb, ws, "LogUtenti");
+      XLSX.writeFile(wb, "LogUtenti.xlsx");
+    }
+
     document.getElementById("loginBtn").onclick = login;
     document.getElementById("logoutBtn").onclick = logout;
     document.getElementById("btnAggiungi").onclick = aggiungiComponente;
     document.getElementById("btnTorna").onclick = tornaIndietro;
     document.getElementById("btnEsporta").onclick = esportaExcel;
+    btnEsportaLog.onclick = esportaLog;
   </script>
 </body>
 </html>
