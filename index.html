@@ -185,8 +185,6 @@
     const btnSvuotaLog = document.getElementById("btnSvuotaLog");
 
     let magazzinoCorrente = null;
-    let ruoloUtente = "";
-    let emailUtente = "";
 
     async function registraLog(azione, dettagli = '') {
       const { data: userData } = await supabase.auth.getUser();
@@ -209,17 +207,7 @@
         await registraLog("Login");
         mostraMagazzini();
 
-        // Gestione ruoli
-        emailUtente = email.toLowerCase();
-        if (emailUtente.includes("reparto")) ruoloUtente = "reparto";
-        else if (emailUtente.includes("branco")) ruoloUtente = "branco";
-        else if (emailUtente.includes("clan")) ruoloUtente = "clan";
-        else if (emailUtente.includes("noviziato")) ruoloUtente = "noviziato";
-        else if (emailUtente.includes("coca")) ruoloUtente = "coca";
-        else if (emailUtente.includes("admin")) ruoloUtente = "admin";
-        else ruoloUtente = "altro";
-
-        if (emailUtente === "admin@scout.it") {
+        if (email.toLowerCase() === "admin@scout.it") {
           btnEsportaLog.classList.remove("hidden");
           btnSvuotaLog.classList.remove("hidden");
         }
@@ -256,7 +244,38 @@
       magazziniSection.classList.add("hidden");
       componentiSection.classList.remove("hidden");
       titoloMagazzino.textContent = "Magazzino: " + magazzino.nome;
-      caricaComponenti();
+      await caricaComponenti();
+
+      const { data: userData } = await supabase.auth.getUser();
+      const email = userData?.user?.email || "";
+      const ruoloUtente = email.split("@")[0].toLowerCase();
+      const nomeMag = magazzino.nome.toLowerCase();
+
+      const permessoModifica =
+        ruoloUtente === "admin" ||
+        (ruoloUtente === "reparto" && nomeMag.match(/reparto/i)) ||
+        (ruoloUtente === "branco" && nomeMag.match(/branco/i)) ||
+        (ruoloUtente === "clan" && nomeMag.match(/clan/i)) ||
+        (ruoloUtente === "noviziato" && nomeMag.match(/noviziato/i)) ||
+        (ruoloUtente === "coca" && nomeMag.match(/co\.?ca/i));
+
+      const bottoni = componentiSection.querySelectorAll("button");
+      bottoni.forEach(btn => {
+        if (!permessoModifica && !["btnTorna", "btnEsporta"].includes(btn.id)) {
+          btn.disabled = true;
+          btn.style.opacity = "0.5";
+          btn.style.cursor = "not-allowed";
+        } else {
+          btn.disabled = false;
+          btn.style.opacity = "1";
+          btn.style.cursor = "pointer";
+        }
+      });
+
+      const noteCelle = document.querySelectorAll(".noteCell");
+      noteCelle.forEach(cell => {
+        cell.contentEditable = permessoModifica;
+      });
     }
 
     async function caricaComponenti() {
@@ -269,54 +288,20 @@
       if (error) return alert("Errore caricamento componenti");
 
       tabellaComponenti.innerHTML = "";
-
-      // Controllo permessi aggiunta
-      const btnAggiungi = document.getElementById("btnAggiungi");
-      const nomeMag = magazzinoCorrente.nome.toLowerCase();
-      if (
-        ruoloUtente === "admin" ||
-        (ruoloUtente === "reparto" && nomeMag.includes("reparto")) ||
-        (ruoloUtente === "branco" && nomeMag.includes("branco")) ||
-        (ruoloUtente === "clan" && nomeMag.includes("clan")) ||
-        (ruoloUtente === "noviziato" && nomeMag.includes("noviziato")) ||
-        (ruoloUtente === "coca" && nomeMag.includes("coca"))
-      ) {
-        btnAggiungi.disabled = false;
-        btnAggiungi.style.opacity = "1";
-      } else {
-        btnAggiungi.disabled = true;
-        btnAggiungi.style.opacity = "0.5";
-      }
-
       if (!data || data.length === 0) {
         tabellaComponenti.innerHTML = "<tr><td colspan='4'>Nessun componente presente.</td></tr>";
       } else {
         data.sort((a, b) => a.nome.localeCompare(b.nome, 'it', { sensitivity: 'base' }));
         data.forEach(c => {
           const tr = document.createElement("tr");
-
-          let permessoModifica = false;
-          if (ruoloUtente === "admin") permessoModifica = true;
-          else if (
-            (ruoloUtente === "reparto" && nomeMag.includes("reparto")) ||
-            (ruoloUtente === "branco" && nomeMag.includes("branco")) ||
-            (ruoloUtente === "clan" && nomeMag.includes("clan")) ||
-            (ruoloUtente === "noviziato" && nomeMag.includes("noviziato")) ||
-            (ruoloUtente === "coca" && nomeMag.includes("coca"))
-          ) permessoModifica = true;
-
           tr.innerHTML = `
             <td>${c.nome}</td>
             <td>${c.quantita}</td>
-            <td class="noteCell" ${permessoModifica ? 'contenteditable="true" onblur="aggiornaNote('+c.id+', this.innerText)"' : ''}>
-              ${c.note || ''}
-            </td>
+            <td class="noteCell" contenteditable="true" onblur="aggiornaNote(${c.id}, this.innerText)">${c.note || ''}</td>
             <td>
-              ${permessoModifica ? `
-                <button onclick="incrementaQuantita(${c.id})">Incrementa</button>
-                <button onclick="rimuoviQuantita(${c.id})">Decrementa</button>
-                <button onclick="eliminaComponente(${c.id})">Elimina</button>
-              ` : `<span style="color:gray;">Solo lettura</span>`}
+              <button onclick="incrementaQuantita(${c.id})">Incrementa</button>
+              <button onclick="rimuoviQuantita(${c.id})">Decrementa</button>
+              <button onclick="eliminaComponente(${c.id})">Elimina</button>
             </td>`;
           tabellaComponenti.appendChild(tr);
         });
@@ -378,6 +363,7 @@
         .eq("id", id);
 
       await registraLog("Incremento componente", `${comp.nome} +${quantitaDaAggiungere}`);
+
       await caricaComponenti();
     }
 
@@ -410,16 +396,24 @@
     }
 
     function esportaExcel() {
-      const ws = XLSX.utils.table_to_sheet(document.getElementById("tabellaComponenti"));
       const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "Componenti");
-      XLSX.writeFile(wb, "Magazzino_" + magazzinoCorrente.nome + ".xlsx");
+      const table = document.getElementById("tabellaComponenti");
+      const ws_data = [];
+      const rows = table.querySelectorAll("tr");
+      rows.forEach(row => {
+        const cols = row.querySelectorAll("th, td");
+        const rowData = [];
+        for (let i = 0; i < cols.length - 1; i++) rowData.push(cols[i].innerText);
+        ws_data.push(rowData);
+      });
+      const ws = XLSX.utils.aoa_to_sheet(ws_data);
+      XLSX.utils.book_append_sheet(wb, ws, magazzinoCorrente.nome);
+      XLSX.writeFile(wb, `${magazzinoCorrente.nome}.xlsx`);
     }
 
     async function esportaLog() {
-      const { data, error } = await supabase.from("log").select("*");
+      const { data, error } = await supabase.from("log").select("*").order("data", { ascending: false });
       if (error) return alert("Errore esportazione log");
-
       const ws = XLSX.utils.json_to_sheet(data);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "LogUtenti");
@@ -427,7 +421,7 @@
     }
 
     async function svuotaLog() {
-      if (confirm("Sei sicuro di voler svuotare tutto il log utenti?")) {
+      if (confirm("Sei sicuro di voler svuotare il log utenti?")) {
         await supabase.from("log").delete().neq("id", 0);
         alert("Log svuotato con successo!");
       }
