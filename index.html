@@ -185,6 +185,8 @@
     const btnSvuotaLog = document.getElementById("btnSvuotaLog");
 
     let magazzinoCorrente = null;
+    let ruoloUtente = "";
+    let emailUtente = "";
 
     async function registraLog(azione, dettagli = '') {
       const { data: userData } = await supabase.auth.getUser();
@@ -207,7 +209,17 @@
         await registraLog("Login");
         mostraMagazzini();
 
-        if (email.toLowerCase() === "admin@scout.it") {
+        // Gestione ruoli
+        emailUtente = email.toLowerCase();
+        if (emailUtente.includes("reparto")) ruoloUtente = "reparto";
+        else if (emailUtente.includes("branco")) ruoloUtente = "branco";
+        else if (emailUtente.includes("clan")) ruoloUtente = "clan";
+        else if (emailUtente.includes("noviziato")) ruoloUtente = "noviziato";
+        else if (emailUtente.includes("coca")) ruoloUtente = "coca";
+        else if (emailUtente.includes("admin")) ruoloUtente = "admin";
+        else ruoloUtente = "altro";
+
+        if (emailUtente === "admin@scout.it") {
           btnEsportaLog.classList.remove("hidden");
           btnSvuotaLog.classList.remove("hidden");
         }
@@ -257,20 +269,54 @@
       if (error) return alert("Errore caricamento componenti");
 
       tabellaComponenti.innerHTML = "";
+
+      // Controllo permessi aggiunta
+      const btnAggiungi = document.getElementById("btnAggiungi");
+      const nomeMag = magazzinoCorrente.nome.toLowerCase();
+      if (
+        ruoloUtente === "admin" ||
+        (ruoloUtente === "reparto" && nomeMag.includes("reparto")) ||
+        (ruoloUtente === "branco" && nomeMag.includes("branco")) ||
+        (ruoloUtente === "clan" && nomeMag.includes("clan")) ||
+        (ruoloUtente === "noviziato" && nomeMag.includes("noviziato")) ||
+        (ruoloUtente === "coca" && nomeMag.includes("coca"))
+      ) {
+        btnAggiungi.disabled = false;
+        btnAggiungi.style.opacity = "1";
+      } else {
+        btnAggiungi.disabled = true;
+        btnAggiungi.style.opacity = "0.5";
+      }
+
       if (!data || data.length === 0) {
         tabellaComponenti.innerHTML = "<tr><td colspan='4'>Nessun componente presente.</td></tr>";
       } else {
         data.sort((a, b) => a.nome.localeCompare(b.nome, 'it', { sensitivity: 'base' }));
         data.forEach(c => {
           const tr = document.createElement("tr");
+
+          let permessoModifica = false;
+          if (ruoloUtente === "admin") permessoModifica = true;
+          else if (
+            (ruoloUtente === "reparto" && nomeMag.includes("reparto")) ||
+            (ruoloUtente === "branco" && nomeMag.includes("branco")) ||
+            (ruoloUtente === "clan" && nomeMag.includes("clan")) ||
+            (ruoloUtente === "noviziato" && nomeMag.includes("noviziato")) ||
+            (ruoloUtente === "coca" && nomeMag.includes("coca"))
+          ) permessoModifica = true;
+
           tr.innerHTML = `
             <td>${c.nome}</td>
             <td>${c.quantita}</td>
-            <td class="noteCell" contenteditable="true" onblur="aggiornaNote(${c.id}, this.innerText)">${c.note || ''}</td>
+            <td class="noteCell" ${permessoModifica ? 'contenteditable="true" onblur="aggiornaNote('+c.id+', this.innerText)"' : ''}>
+              ${c.note || ''}
+            </td>
             <td>
-              <button onclick="incrementaQuantita(${c.id})">Incrementa</button>
-              <button onclick="rimuoviQuantita(${c.id})">Decrementa</button>
-              <button onclick="eliminaComponente(${c.id})">Elimina</button>
+              ${permessoModifica ? `
+                <button onclick="incrementaQuantita(${c.id})">Incrementa</button>
+                <button onclick="rimuoviQuantita(${c.id})">Decrementa</button>
+                <button onclick="eliminaComponente(${c.id})">Elimina</button>
+              ` : `<span style="color:gray;">Solo lettura</span>`}
             </td>`;
           tabellaComponenti.appendChild(tr);
         });
@@ -332,7 +378,6 @@
         .eq("id", id);
 
       await registraLog("Incremento componente", `${comp.nome} +${quantitaDaAggiungere}`);
-
       await caricaComponenti();
     }
 
@@ -365,43 +410,27 @@
     }
 
     function esportaExcel() {
+      const ws = XLSX.utils.table_to_sheet(document.getElementById("tabellaComponenti"));
       const wb = XLSX.utils.book_new();
-      const table = document.getElementById("tabellaComponenti");
-
-      const ws_data = [];
-      const rows = table.querySelectorAll("tr");
-      rows.forEach(row => {
-        const cols = row.querySelectorAll("th, td");
-        const rowData = [];
-        for (let i = 0; i < cols.length - 1; i++) rowData.push(cols[i].innerText);
-        ws_data.push(rowData);
-      });
-
-      const ws = XLSX.utils.aoa_to_sheet(ws_data);
-      XLSX.utils.book_append_sheet(wb, ws, magazzinoCorrente.nome);
-      XLSX.writeFile(wb, `${magazzinoCorrente.nome}.xlsx`);
+      XLSX.utils.book_append_sheet(wb, ws, "Componenti");
+      XLSX.writeFile(wb, "Magazzino_" + magazzinoCorrente.nome + ".xlsx");
     }
 
     async function esportaLog() {
-      const { data, error } = await supabase.from("log").select("*").order("data", { ascending: true });
-      if (error) return alert("Errore esportazione log: " + error.message);
+      const { data, error } = await supabase.from("log").select("*");
+      if (error) return alert("Errore esportazione log");
 
+      const ws = XLSX.utils.json_to_sheet(data);
       const wb = XLSX.utils.book_new();
-      const ws_data = [["Email", "Azione", "Dettagli", "Data"]];
-      data.forEach(r => ws_data.push([r.email, r.azione, r.dettagli || '', r.data]));
-      const ws = XLSX.utils.aoa_to_sheet(ws_data);
       XLSX.utils.book_append_sheet(wb, ws, "LogUtenti");
       XLSX.writeFile(wb, "LogUtenti.xlsx");
     }
 
     async function svuotaLog() {
-      if (!confirm("⚠️ Sei sicuro di voler cancellare tutti i log? Questa operazione è irreversibile.")) return;
-      const { error } = await supabase.from("log").delete().neq("id", 0);
-      if (error) {
-        alert("Errore durante la cancellazione dei log: " + error.message);
-        return;
+      if (confirm("Sei sicuro di voler svuotare tutto il log utenti?")) {
+        await supabase.from("log").delete().neq("id", 0);
+        alert("Log svuotato con successo!");
       }
-      alert("✅ Log svuotato con successo!");
     }
 
     document.getElementById("loginBtn").onclick = login;
@@ -414,4 +443,3 @@
   </script>
 </body>
 </html>
-
