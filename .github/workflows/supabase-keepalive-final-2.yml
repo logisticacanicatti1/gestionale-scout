@@ -1,0 +1,22 @@
+name: Supabase Keep Alive Final
+
+on:
+  schedule:
+    - cron: '0 9 * * *'  # esegue ogni giorno alle 09:00
+  workflow_dispatch:
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Ping Supabase
+        run: |
+          curl -I https://vnciisnydgdmumjiufoi.supabase.co/rest/v1/
+
+      - name: Query tabella componenti
+        run: |
+          curl -X GET \
+            -H "apikey: ${{ secrets.SUPABASE_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_KEY }}" \
+            "https://vnciisnydgdmumjiufoi.supabase.co/rest/v1/componenti?select=*"
